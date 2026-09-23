@@ -19,9 +19,17 @@ type ResourceState = {
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 let missionKeyHandler: ((event: KeyboardEvent) => void) | null = null;
+let splashTimer: number | undefined;
 
 function setScreen(html: string) {
   app.innerHTML = html;
+}
+
+function clearSplashTimer() {
+  if (splashTimer) {
+    window.clearTimeout(splashTimer);
+    splashTimer = undefined;
+  }
 }
 
 function clearMissionKeyHandler() {
@@ -33,7 +41,7 @@ function clearMissionKeyHandler() {
 
 async function init() {
   showSplash();
-  setTimeout(showLogin, 1800);
+  splashTimer = window.setTimeout(showLogin, 1800);
 }
 
 function showSplash() {
@@ -47,6 +55,7 @@ function showSplash() {
 }
 
 function showLogin() {
+  clearSplashTimer();
   clearMissionKeyHandler();
   setScreen(`
     <section class="screen">
@@ -79,6 +88,7 @@ function showLogin() {
 }
 
 function showUsernameSetup() {
+  clearSplashTimer();
   clearMissionKeyHandler();
   setScreen(`
     <section class="screen">
@@ -105,6 +115,7 @@ function showUsernameSetup() {
 }
 
 function showMenu() {
+  clearSplashTimer();
   clearMissionKeyHandler();
   setScreen(`
     <section class="screen">
@@ -150,8 +161,20 @@ function showMenu() {
 }
 
 async function showMissions(autoStart: boolean) {
+  clearSplashTimer();
   clearMissionKeyHandler();
   const missions = normalizeMissionCards(await getMissions());
+  if (missions.length === 0) {
+    setScreen(`
+      <section class="screen">
+        <h2>MISSION CAROUSEL</h2>
+        <p>No hay misiones disponibles por el momento.</p>
+        <button id="back" class="secondary">Volver</button>
+      </section>
+    `);
+    app.querySelector<HTMLButtonElement>("#back")!.onclick = showMenu;
+    return;
+  }
   let index = 0;
 
   const render = () => {
@@ -215,6 +238,7 @@ async function showMissions(autoStart: boolean) {
 }
 
 async function startMission(mission: { id: number; status: string }) {
+  clearSplashTimer();
   if (mission.status === "LOCKED") {
     const lockMessage = document.querySelector("#lockMessage");
     if (lockMessage) lockMessage.textContent = "MISSION LOCKED: Complete Mission 01 to unlock this mission.";
@@ -254,6 +278,7 @@ async function startMission(mission: { id: number; status: string }) {
 
   const world = new RAPIER.World({ x: 0, y: -PHYSICS_SETTINGS.EARTH_GRAVITY, z: 0 });
   const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(0, 3.7, 0));
+  world.createCollider(RAPIER.ColliderDesc.cylinder(3.25, 0.5), body);
 
   const resources: ResourceState = {
     budget: 100,
@@ -269,6 +294,7 @@ async function startMission(mission: { id: number; status: string }) {
   let launched = false;
   let countdownTimer: number | undefined;
   let missionCompleted = false;
+  let completionInFlight = false;
 
   const resizeHandler = () => engine.resize();
 
@@ -278,6 +304,9 @@ async function startMission(mission: { id: number; status: string }) {
       countdownTimer = undefined;
     }
     window.removeEventListener("resize", resizeHandler);
+    if (typeof (world as unknown as { free?: () => void }).free === "function") {
+      (world as unknown as { free: () => void }).free();
+    }
     engine.stopRenderLoop();
     engine.dispose();
   };
@@ -321,7 +350,7 @@ async function startMission(mission: { id: number; status: string }) {
 
   await saveProgress({ mission_id: 1, status: "in_progress", resources });
 
-  engine.runRenderLoop(async () => {
+  engine.runRenderLoop(() => {
     world.step();
     const position = body.translation();
     rocket.position.y = position.y;
@@ -336,13 +365,16 @@ async function startMission(mission: { id: number; status: string }) {
       }
     }
 
-    if (!missionCompleted && launched && position.y > 40) {
+    if (!missionCompleted && !completionInFlight && launched && position.y > 40) {
+      completionInFlight = true;
       missionCompleted = true;
       launched = false;
-      await completeMission(1);
-      await saveProgress({ mission_id: 1, status: "completed", resources });
-      const result = document.querySelector("#result");
-      if (result) result.textContent = "RESULTADO: MISIÓN COMPLETADA. Mission 02 desbloqueada.";
+      void (async () => {
+        await completeMission(1);
+        await saveProgress({ mission_id: 1, status: "completed", resources });
+        const result = document.querySelector("#result");
+        if (result) result.textContent = "RESULTADO: MISIÓN COMPLETADA. Mission 02 desbloqueada.";
+      })();
     }
 
     scene.render();

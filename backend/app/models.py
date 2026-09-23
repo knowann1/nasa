@@ -91,6 +91,8 @@ class MissionResult(db.Model):
     summary = db.Column(db.Text, nullable=False, default="")
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
+    __table_args__ = (db.UniqueConstraint("user_id", "mission_id", name="uq_user_mission_result"),)
+
 
 class PlayerStatistics(db.Model):
     id = db.Column(db.Integer, primary_key=True)

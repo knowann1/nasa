@@ -62,3 +62,19 @@ def test_mission_locking_and_unlock(client):
 
     missions_after = client.get("/api/missions").get_json()
     assert missions_after[1]["status"] == "AVAILABLE"
+
+
+def test_repeated_mission_complete_is_deduplicated(client, app):
+    from app.models import MissionResult
+
+    login(client)
+    client.post("/api/user/username", json={"username": "repeat_astro"})
+
+    first = client.post("/api/mission/1/complete")
+    second = client.post("/api/mission/1/complete")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    with app.app_context():
+        assert MissionResult.query.filter_by(mission_id=1).count() == 1

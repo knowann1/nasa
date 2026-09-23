@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
+from sqlalchemy.exc import IntegrityError
 
 from ..auth import auth_required, ensure_player_stats, login_user, logout_user, validate_username
 from ..extensions import db
@@ -323,6 +324,10 @@ def complete_mission(user: User, mission_id: int):
 
     if not MissionResult.query.filter_by(user_id=user.id, mission_id=mission.id).first():
         db.session.add(MissionResult(user_id=user.id, mission_id=mission.id, score=100, summary="Mission completed"))
+        try:
+            db.session.flush()
+        except IntegrityError:
+            db.session.rollback()
 
     stats = PlayerStatistics.query.filter_by(user_id=user.id).first()
     if stats:
