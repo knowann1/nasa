@@ -2,17 +2,27 @@ import { API_BASE_URL } from "../config";
 
 export type Provider = "google" | "apple" | "github";
 
+async function parseJsonOrEmpty(response: Response): Promise<any> {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     ...init
   });
+  const body = await parseJsonOrEmpty(response);
   if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
     throw new Error(body.error ?? "Request failed");
   }
-  return response.json() as Promise<T>;
+  return body as T;
 }
 
 export async function login(provider: Provider) {

@@ -18,9 +18,17 @@ type ResourceState = {
 };
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
+let missionKeyHandler: ((event: KeyboardEvent) => void) | null = null;
 
 function setScreen(html: string) {
   app.innerHTML = html;
+}
+
+function clearMissionKeyHandler() {
+  if (missionKeyHandler) {
+    window.removeEventListener("keydown", missionKeyHandler);
+    missionKeyHandler = null;
+  }
 }
 
 async function init() {
@@ -39,6 +47,7 @@ function showSplash() {
 }
 
 function showLogin() {
+  clearMissionKeyHandler();
   setScreen(`
     <section class="screen">
       <h2>${GAME_TITLE}</h2>
@@ -70,6 +79,7 @@ function showLogin() {
 }
 
 function showUsernameSetup() {
+  clearMissionKeyHandler();
   setScreen(`
     <section class="screen">
       <h2>Elige tu USERNAME</h2>
@@ -95,6 +105,7 @@ function showUsernameSetup() {
 }
 
 function showMenu() {
+  clearMissionKeyHandler();
   setScreen(`
     <section class="screen">
       <h2>CENTRO DE CONTROL - ${GAME_TITLE}</h2>
@@ -139,6 +150,7 @@ function showMenu() {
 }
 
 async function showMissions(autoStart: boolean) {
+  clearMissionKeyHandler();
   const missions = normalizeMissionCards(await getMissions());
   let index = 0;
 
@@ -172,15 +184,22 @@ async function showMissions(autoStart: boolean) {
       index = (index + 1) % missions.length;
       render();
     };
-    app.querySelector<HTMLButtonElement>("#back")!.onclick = showMenu;
-    app.querySelector<HTMLButtonElement>("#start")!.onclick = () => startMission(m);
+    app.querySelector<HTMLButtonElement>("#back")!.onclick = () => {
+      clearMissionKeyHandler();
+      showMenu();
+    };
+    app.querySelector<HTMLButtonElement>("#start")!.onclick = () => {
+      clearMissionKeyHandler();
+      startMission(m);
+    };
 
     if (autoStart && m.id === 1 && m.status !== "LOCKED") {
+      clearMissionKeyHandler();
       startMission(m);
     }
   };
 
-  const keyHandler = (event: KeyboardEvent) => {
+  missionKeyHandler = (event: KeyboardEvent) => {
     if (event.key === "ArrowLeft") {
       index = (index + missions.length - 1) % missions.length;
       render();
@@ -191,7 +210,7 @@ async function showMissions(autoStart: boolean) {
     }
   };
 
-  window.addEventListener("keydown", keyHandler, { once: false });
+  window.addEventListener("keydown", missionKeyHandler, { once: false });
   render();
 }
 
@@ -249,6 +268,19 @@ async function startMission(mission: { id: number; status: string }) {
   let countdown = 10;
   let launched = false;
   let countdownTimer: number | undefined;
+  let missionCompleted = false;
+
+  const resizeHandler = () => engine.resize();
+
+  const cleanupMission = () => {
+    if (countdownTimer) {
+      window.clearInterval(countdownTimer);
+      countdownTimer = undefined;
+    }
+    window.removeEventListener("resize", resizeHandler);
+    engine.stopRenderLoop();
+    engine.dispose();
+  };
 
   function renderHud() {
     hud.innerHTML = `
@@ -272,16 +304,15 @@ async function startMission(mission: { id: number; status: string }) {
         countdown -= 1;
         if (countdown <= 0) {
           window.clearInterval(countdownTimer);
+          countdownTimer = undefined;
           launched = true;
           body.applyImpulse({ x: 0, y: 140, z: 0 }, true);
         }
         renderHud();
       }, 1000);
     };
-
     hud.querySelector<HTMLButtonElement>("#exitBtn")!.onclick = () => {
-      engine.stopRenderLoop();
-      engine.dispose();
+      cleanupMission();
       showMenu();
     };
   }
@@ -305,7 +336,8 @@ async function startMission(mission: { id: number; status: string }) {
       }
     }
 
-    if (launched && position.y > 40) {
+    if (!missionCompleted && launched && position.y > 40) {
+      missionCompleted = true;
       launched = false;
       await completeMission(1);
       await saveProgress({ mission_id: 1, status: "completed", resources });
@@ -316,7 +348,7 @@ async function startMission(mission: { id: number; status: string }) {
     scene.render();
   });
 
-  window.addEventListener("resize", () => engine.resize());
+  window.addEventListener("resize", resizeHandler);
 }
 
 init();

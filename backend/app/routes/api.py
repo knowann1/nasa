@@ -28,14 +28,14 @@ def completed_mission_ids(user_id: int) -> set[int]:
     return {row.mission_id for row in rows}
 
 
-def mission_status_for_user(user_id: int, mission: Mission) -> str:
-    completed = completed_mission_ids(user_id)
-    if mission.id in completed:
+def mission_status_for_user(user_id: int, mission: Mission, completed: set[int] | None = None) -> str:
+    completed_set = completed if completed is not None else completed_mission_ids(user_id)
+    if mission.id in completed_set:
         return "COMPLETED"
     if mission.order_index == 1:
         return "AVAILABLE"
     required_prev = Mission.query.filter_by(order_index=mission.order_index - 1).first()
-    if required_prev and required_prev.id in completed:
+    if required_prev and required_prev.id in completed_set:
         return "AVAILABLE"
     return "LOCKED"
 
@@ -126,6 +126,7 @@ def set_username(user: User):
 @auth_required
 def missions(user: User):
     mission_rows = Mission.query.order_by(Mission.order_index.asc()).all()
+    completed = completed_mission_ids(user.id)
     return jsonify(
         [
             {
@@ -133,7 +134,7 @@ def missions(user: User):
                 "code": m.code,
                 "title": m.title,
                 "description": m.description,
-                "status": mission_status_for_user(user.id, m),
+                "status": mission_status_for_user(user.id, m, completed),
             }
             for m in mission_rows
         ]
@@ -146,13 +147,14 @@ def mission_detail(user: User, mission_id: int):
     mission = db.session.get(Mission, mission_id)
     if not mission:
         return jsonify({"error": "Mission not found"}), 404
+    completed = completed_mission_ids(user.id)
     return jsonify(
         {
             "id": mission.id,
             "code": mission.code,
             "title": mission.title,
             "description": mission.description,
-            "status": mission_status_for_user(user.id, mission),
+            "status": mission_status_for_user(user.id, mission, completed),
         }
     )
 
@@ -183,7 +185,8 @@ def save_progress(user: User):
     if not mission:
         return jsonify({"error": "Mission not found"}), 404
 
-    if mission_status_for_user(user.id, mission) == "LOCKED":
+    completed = completed_mission_ids(user.id)
+    if mission_status_for_user(user.id, mission, completed) == "LOCKED":
         return jsonify({"error": "MISSION LOCKED"}), 403
 
     progress = MissionProgress.query.filter_by(user_id=user.id, mission_id=mission_id).first()
@@ -202,9 +205,17 @@ def save_progress(user: User):
 @auth_required
 def save_decision(user: User):
     body = request.get_json(silent=True) or {}
+    mission_id = int(body.get("mission_id", 0))
+    mission = db.session.get(Mission, mission_id)
+    if not mission:
+        return jsonify({"error": "Mission not found"}), 404
+    completed = completed_mission_ids(user.id)
+    if mission_status_for_user(user.id, mission, completed) == "LOCKED":
+        return jsonify({"error": "MISSION LOCKED"}), 403
+
     decision = Decision(
         user_id=user.id,
-        mission_id=int(body.get("mission_id", 0)),
+        mission_id=mission_id,
         key=str(body.get("key", "")),
         value=str(body.get("value", "")),
     )
@@ -240,10 +251,18 @@ def list_samples(user: User):
 @auth_required
 def create_sample(user: User):
     body = request.get_json(silent=True) or {}
+    mission_id = int(body.get("mission_id", 0))
+    mission = db.session.get(Mission, mission_id)
+    if not mission:
+        return jsonify({"error": "Mission not found"}), 404
+    completed = completed_mission_ids(user.id)
+    if mission_status_for_user(user.id, mission, completed) == "LOCKED":
+        return jsonify({"error": "MISSION LOCKED"}), 403
+
     sample = Sample(
         sample_code=str(body.get("sample_code", "")).strip(),
         user_id=user.id,
-        mission_id=int(body.get("mission_id", 0)),
+        mission_id=mission_id,
         sample_type=str(body.get("sample_type", "UNKNOWN_SAMPLE")),
         mass=float(body.get("mass", 0.0)),
         coord_x=float(body.get("coord_x", 0.0)),
@@ -298,7 +317,8 @@ def complete_mission(user: User, mission_id: int):
     mission = db.session.get(Mission, mission_id)
     if not mission:
         return jsonify({"error": "Mission not found"}), 404
-    if mission_status_for_user(user.id, mission) == "LOCKED":
+    completed = completed_mission_ids(user.id)
+    if mission_status_for_user(user.id, mission, completed) == "LOCKED":
         return jsonify({"error": "MISSION LOCKED", "message": "Complete Mission 01 to unlock this mission."}), 403
 
     if not MissionResult.query.filter_by(user_id=user.id, mission_id=mission.id).first():
@@ -306,7 +326,7 @@ def complete_mission(user: User, mission_id: int):
 
     stats = PlayerStatistics.query.filter_by(user_id=user.id).first()
     if stats:
-        stats.completed_missions = len(completed_mission_ids(user.id) | {mission.id})
+        stats.completed_missions = len(completed | {mission.id})
 
     db.session.commit()
     return jsonify({"ok": True})

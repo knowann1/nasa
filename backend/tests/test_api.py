@@ -39,6 +39,23 @@ def test_mission_locking_and_unlock(client):
 
     blocked = client.post("/api/progress", json={"mission_id": 2, "status": "in_progress", "resources": {}})
     assert blocked.status_code == 403
+    blocked_decision = client.post("/api/decisions", json={"mission_id": 2, "key": "route", "value": "north"})
+    assert blocked_decision.status_code == 403
+    blocked_sample = client.post(
+        "/api/samples",
+        json={
+            "sample_code": "SAMPLE-0001",
+            "mission_id": 2,
+            "sample_type": "LUNAR REGOLITH",
+            "mass": 320,
+            "coord_x": 1,
+            "coord_y": 2,
+            "coord_z": 3,
+            "composition": {"SiO2": 60},
+            "scientific_value": 10,
+        },
+    )
+    assert blocked_sample.status_code == 403
 
     complete = client.post("/api/mission/1/complete")
     assert complete.status_code == 200
