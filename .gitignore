@@ -1,0 +1,14 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+*.db
+.env
+backend/.env
+frontend/.env
+backend/.venv/
+frontend/node_modules/
+frontend/dist/
+tsconfig.tsbuildinfo
