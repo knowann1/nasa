@@ -65,10 +65,11 @@ def test_mission_locking_and_unlock(client):
 
 
 def test_repeated_mission_complete_is_deduplicated(client, app):
-    from app.models import MissionResult
+    from app.models import MissionResult, User
 
     login(client)
     client.post("/api/user/username", json={"username": "repeat_astro"})
+    user = client.get("/api/user/me").get_json()
 
     first = client.post("/api/mission/1/complete")
     second = client.post("/api/mission/1/complete")
@@ -77,4 +78,6 @@ def test_repeated_mission_complete_is_deduplicated(client, app):
     assert second.status_code == 200
 
     with app.app_context():
-        assert MissionResult.query.filter_by(mission_id=1).count() == 1
+        db_user = User.query.filter_by(id=user["id"]).first()
+        assert db_user is not None
+        assert MissionResult.query.filter_by(mission_id=1, user_id=db_user.id).count() == 1

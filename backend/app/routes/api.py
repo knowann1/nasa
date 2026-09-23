@@ -328,6 +328,7 @@ def complete_mission(user: User, mission_id: int):
             db.session.flush()
         except IntegrityError:
             db.session.rollback()
+            completed = completed_mission_ids(user.id)
 
     stats = PlayerStatistics.query.filter_by(user_id=user.id).first()
     if stats:

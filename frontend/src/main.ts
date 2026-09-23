@@ -276,6 +276,7 @@ async function startMission(mission: { id: number; status: string }) {
   const rocket = createRocket(scene, "mission-1");
   rocket.position = new Vector3(0, 3.7, 0);
 
+  await RAPIER.init();
   const world = new RAPIER.World({ x: 0, y: -PHYSICS_SETTINGS.EARTH_GRAVITY, z: 0 });
   const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(0, 3.7, 0));
   world.createCollider(RAPIER.ColliderDesc.cylinder(3.25, 0.5), body);
@@ -307,6 +308,7 @@ async function startMission(mission: { id: number; status: string }) {
     if (typeof (world as unknown as { free?: () => void }).free === "function") {
       (world as unknown as { free: () => void }).free();
     }
+    scene.dispose();
     engine.stopRenderLoop();
     engine.dispose();
   };
@@ -370,10 +372,18 @@ async function startMission(mission: { id: number; status: string }) {
       missionCompleted = true;
       launched = false;
       void (async () => {
-        await completeMission(1);
-        await saveProgress({ mission_id: 1, status: "completed", resources });
-        const result = document.querySelector("#result");
-        if (result) result.textContent = "RESULTADO: MISIÓN COMPLETADA. Mission 02 desbloqueada.";
+        try {
+          await completeMission(1);
+          await saveProgress({ mission_id: 1, status: "completed", resources });
+          const result = document.querySelector("#result");
+          if (result) result.textContent = "RESULTADO: MISIÓN COMPLETADA. Mission 02 desbloqueada.";
+        } catch {
+          completionInFlight = false;
+          missionCompleted = false;
+          launched = true;
+          const result = document.querySelector("#result");
+          if (result) result.textContent = "No se pudo guardar el resultado. Reintentando en el siguiente ciclo.";
+        }
       })();
     }
 
